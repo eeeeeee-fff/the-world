@@ -1,5 +1,5 @@
 ﻿<template>
-  <div class="screen-root">
+  <div class="screen-root" :class="{ 'detail-mode': !!selectedParticleData }">
     <div ref="containerRef" class="screen-canvas"></div>
     <div class="screen-noise"></div>
     <div class="screen-vignette"></div>
@@ -58,42 +58,135 @@
       <p class="province-tip">点击省份后可钻取城市。江苏、湖北已接入真实市级边界，扬州、武汉已接入真实城市数据。</p>
     </section>
 
-    <aside class="hud side-panel glass-card">
-      <div class="section-head compact">
-        <span>情报视窗</span>
-        <strong>{{ selectedCity ? selectedCity.name : selectedProvince ? selectedProvince.name : '中国' }}</strong>
-      </div>
 
-      <div class="meta-grid">
-        <div><span>层级</span><strong>{{ selectedCity ? '城市' : selectedProvince ? '省份' : '全国' }}</strong></div>
-        <div><span>编码</span><strong>{{ selectedCity?.code || selectedProvince?.code || '100000' }}</strong></div>
-        <div><span>类型</span><strong>{{ CATEGORY_STYLES[activeCategory].label }}</strong></div>
-        <div><span>粒子数</span><strong>{{ particleCount }}</strong></div>
-      </div>
-
-      <div class="detail-section">
-        <div class="section-head compact">
-          <span>{{ selectedParticleData ? '已选节点' : '详情卡片' }}</span>
-          <strong>{{ detailItems.length }}</strong>
-        </div>
-
-        <div class="detail-list">
-          <article v-for="item in detailItems" :key="item.id" class="detail-card" :class="{ selected: selectedParticleData?.id === item.id }" @click="openDetailFromList(item)">
-            <div class="detail-top">
-              <span class="type-chip">{{ CATEGORY_STYLES[item.category].label }}</span>
-              <strong>{{ item.value }}</strong>
+    <section class="hud intel-dash-panel glass-card" :class="{ active: !!selectedParticleData }">
+      <template v-if="selectedParticleData">
+        <!-- Header bar -->
+        <div class="dash-header">
+          <div class="dash-path">
+            <p class="eyebrow">INTEL NODE / {{ CATEGORY_STYLES[selectedParticleData.category].label }}</p>
+            <div class="dash-breadcrumb">
+              <span>{{ selectedProvince?.name || 'CHINA' }}</span>
+              <span class="bc-sep">›</span>
+              <span>{{ selectedCity?.name || '--' }}</span>
+              <span class="bc-sep">›</span>
+              <strong>{{ selectedParticleData.name }}</strong>
             </div>
-            <h4>{{ item.title }}</h4>
-            <p>{{ item.subtitle }}</p>
-            <div class="tag-row"><span v-for="tag in item.tags" :key="tag">{{ tag }}</span></div>
-          </article>
-          <article v-if="!detailItems.length" class="detail-card empty">
-            <h4>操作提示</h4>
-            <p>旋转地球查看中国边界，点击省份聚焦，再点击城市激活粒子云与城市轮廓。</p>
-          </article>
+          </div>
+          <div class="dash-header-right">
+            <div class="live-badge-sm"><span class="live-dot"></span><span>情报实时</span></div>
+            <button class="close-btn" @click="closeParticleDetail">← 返回地图</button>
+          </div>
         </div>
-      </div>
-    </aside>
+
+        <!-- Dashboard body: left main + right side -->
+        <div class="dash-body">
+          <!-- ── Left main column ───────────────────────────────────── -->
+          <div class="dash-left">
+            <!-- Node identity + hero value -->
+            <div class="node-hero-row glass-inner" :style="{ '--accent': categoryColorCss }">
+              <div class="node-hero-accent-bar" :style="{ background: categoryColorCss }"></div>
+              <span class="type-chip node-chip" :style="{ background: categoryColorCss + '28', color: categoryColorCss, borderColor: categoryColorCss + '44' }">
+                {{ CATEGORY_STYLES[selectedParticleData.category].label }}
+              </span>
+              <div class="node-hero-text">
+                <h2>{{ selectedParticleData.title }}</h2>
+                <p>{{ selectedParticleData.subtitle }}</p>
+                <div class="tag-row" style="margin-top:6px" v-if="selectedParticleData.tags?.length">
+                  <span v-for="tag in selectedParticleData.tags" :key="tag">{{ tag }}</span>
+                </div>
+              </div>
+              <div class="node-value-badge">
+                <strong :style="{ color: categoryColorCss }">{{ selectedParticleData.value }}</strong>
+                <span>综合指数</span>
+              </div>
+            </div>
+
+            <!-- KPI cards with colored progress bars -->
+            <div class="kpi-row" v-if="currentSectorData">
+              <div
+                v-for="(m, i) in currentSectorData.metricCards"
+                :key="m.label"
+                class="kpi-card glass-inner"
+                :style="{ '--kc': kpiColors[i] }"
+              >
+                <span class="kpi-label">{{ m.label }}</span>
+                <strong class="kpi-value" :style="{ color: kpiColors[i] }">{{ m.value }}</strong>
+                <div class="kpi-track"><div class="kpi-fill" :style="{ width: kpiWidth(m.value), background: kpiColors[i] }"></div></div>
+              </div>
+            </div>
+
+            <!-- Chart row top: trend (wide) + donut (narrow) -->
+            <div class="chart-row-top" v-if="currentSectorData">
+              <div class="chart-panel glass-inner">
+                <div class="chart-panel-head">
+                  <h4>{{ currentSectorData.trendTitle }}</h4>
+                  <span class="panel-tag">趋势</span>
+                </div>
+                <div ref="intelTrendRef" class="intel-chart-box"></div>
+              </div>
+              <div class="chart-panel glass-inner">
+                <div class="chart-panel-head">
+                  <h4>节点分布</h4>
+                  <span class="panel-tag">类型</span>
+                </div>
+                <div ref="intelDonutRef" class="intel-chart-box"></div>
+              </div>
+            </div>
+
+            <!-- Chart row bottom: ranking full width -->
+            <div class="chart-row-bot" v-if="currentSectorData">
+              <div class="chart-panel glass-inner">
+                <div class="chart-panel-head">
+                  <h4>{{ currentSectorData.rankingTitle }}</h4>
+                  <span class="panel-tag">排行</span>
+                </div>
+                <div ref="intelRankingRef" class="intel-chart-box"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Right side column ─────────────────────────────────── -->
+          <div class="dash-right">
+            <!-- Scatter bubble chart: highlight feature -->
+            <div class="chart-panel glass-inner scatter-panel">
+              <div class="chart-panel-head">
+                <h4>情报节点云图</h4>
+                <span class="panel-tag">散布</span>
+              </div>
+              <div ref="intelScatterRef" class="intel-chart-box scatter-box"></div>
+            </div>
+
+            <!-- Sector summary compact -->
+            <div class="summary-strip glass-inner" v-if="currentSectorData">
+              <p class="eyebrow">{{ currentSectorData.kicker }}</p>
+              <p class="summary-body">{{ currentSectorData.systemSummary }}</p>
+            </div>
+
+            <!-- Intel flow cards compact -->
+            <div class="dash-intel-block" v-if="currentSectorData">
+              <div class="block-head">
+                <span>{{ currentSectorData.intelTitle }}</span>
+                <span class="panel-tag">动态</span>
+              </div>
+              <article
+                v-for="card in currentSectorData.intelCards.slice(0, 3)"
+                :key="card.title"
+                class="intel-flow-card glass-inner"
+              >
+                <div class="intel-flow-head">
+                  <span class="intel-tag-sm">{{ card.tag }}</span>
+                  <span :class="['impact-chip', card.impact === '利好' ? 'pos' : card.impact === '利空' ? 'neg' : 'neu']">{{ card.impact }}</span>
+                  <time>{{ card.time }}</time>
+                </div>
+                <h4>{{ card.title }}</h4>
+                <p>{{ card.summary }}</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </template>
+    </section>
 
     
     <footer class="hud footer-bar glass-card">
@@ -114,10 +207,13 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import gsap from 'gsap'
+import * as echarts from 'echarts'
+import { categoryData } from '../data/dashboard-data.js'
+import { buildTrendOption, buildRankingOption } from '../charts/chart-options.js'
 import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing'
 import {
   CATEGORY_STYLES,
@@ -135,14 +231,25 @@ import {
 } from '../data/map-scene-data'
 
 const containerRef = ref(null)
-const emit = defineEmits(['open-detail'])
-
 const selectedProvince = ref(null)
 const selectedCity = ref(null)
 const activeCategory = ref('Talent')
 const selectedParticleData = ref(null)
 const particleCount = ref(0)
 const tooltip = reactive({ visible: false, x: 0, y: 0, title: '', subtitle: '' })
+
+const intelTrendRef = ref(null)
+const intelRankingRef = ref(null)
+const intelDonutRef = ref(null)
+const intelScatterRef = ref(null)
+let intelTrendChart = null
+let intelRankingChart = null
+let intelDonutChart = null
+let intelScatterChart = null
+
+const PARTICLE_SECTOR_MAP = { Talent: 'robot', Paper: 'bio', Enterprise: 'energy', Patent: 'ai' }
+const CHART_CAT_COLORS = { Talent: '#58d5ff', Enterprise: '#ffa14a', Paper: '#57e38d', Patent: '#42f5b0' }
+const kpiColors = ['#58d5ff', '#ffa14a', '#57e38d', '#b57bee']
 
 const drillLabel = computed(() => {
   if (selectedCity.value) return `CITY / ${selectedProvince.value?.name || ''} / ${selectedCity.value.name}`
@@ -189,53 +296,213 @@ const detailItems = computed(() => {
 })
 const relatedParticleItems = computed(() => {
   if (!selectedParticleData.value) return []
-  return getDetailItems(selectedCity.value?.code || '321000', selectedParticleData.value.category)
+  const cityCode = selectedCity.value?.code || '321000'
+  const sameCategory = getDetailItems(cityCode, selectedParticleData.value.category)
+  const otherCategories = FILTERS
+    .filter((category) => category !== selectedParticleData.value.category)
+    .flatMap((category) => getDetailItems(cityCode, category))
+  return [selectedParticleData.value, ...sameCategory.filter((item) => item.id !== selectedParticleData.value.id), ...otherCategories].slice(0, 12)
 })
 
-function buildDetailPayload(meta) {
-  const cityCode = selectedCity.value?.code || '321000'
-  const cityName = selectedCity.value?.name || ''
-  const provinceCode = selectedProvince.value?.code || ''
-  const provinceName = selectedProvince.value?.name || ''
-  const sameCategory = getDetailItems(cityCode, meta.category).filter((item) => item.id !== meta.id)
-  const otherCategories = FILTERS
-    .filter((category) => category !== meta.category)
-    .flatMap((category) => getDetailItems(cityCode, category))
+const currentSector = computed(() => PARTICLE_SECTOR_MAP[selectedParticleData.value?.category] || 'robot')
+const currentSectorData = computed(() => selectedParticleData.value ? categoryData[currentSector.value] : null)
+const categoryColorCss = computed(() => selectedParticleData.value ? (CHART_CAT_COLORS[selectedParticleData.value.category] || '#58d5ff') : '#58d5ff')
 
+function kpiWidth(value) {
+  const num = parseFloat(String(value).replace(/[^0-9.]/g, '')) || 0
+  return `${Math.min(100, num)}%`
+}
+
+function buildParticleScatterOption(items) {
+  const series = FILTERS.map((cat) => {
+    const catItems = items.filter((i) => i.category === cat)
+    return {
+      name: CATEGORY_STYLES[cat].label,
+      type: 'scatter',
+      data: catItems.map((item, idx) => {
+        const val = parseFloat(String(item.value).replace(/[^0-9.]/g, '')) || 50
+        return { value: [idx * 20 + FILTERS.indexOf(cat) * 6 + Math.random() * 10, val + (Math.random() - 0.5) * 10, val], name: item.title }
+      }),
+      symbolSize: (data) => Math.max(8, Math.sqrt(data[2]) * 2.6),
+      itemStyle: { color: CHART_CAT_COLORS[cat], opacity: 0.92, shadowBlur: 14, shadowColor: CHART_CAT_COLORS[cat] + '88' },
+    }
+  })
   return {
-    ...meta,
-    cityCode,
-    cityName,
-    provinceCode,
-    provinceName,
-    related: [meta, ...sameCategory, ...otherCategories].slice(0, 12),
+    backgroundColor: 'transparent',
+    grid: { left: 20, right: 12, top: 32, bottom: 16 },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(4,13,28,0.94)',
+      borderColor: 'rgba(123,195,255,0.18)',
+      borderWidth: 1,
+      textStyle: { color: '#eef4ff', fontSize: 12 },
+      formatter: (params) => `<b style="color:${CHART_CAT_COLORS[params.seriesName] || '#fff'}">${params.seriesName}</b><br/>${params.data.name}`,
+    },
+    legend: { top: 2, right: 0, textStyle: { color: '#647595', fontSize: 10 }, itemWidth: 8, itemHeight: 8 },
+    xAxis: { type: 'value', show: false, scale: true },
+    yAxis: { type: 'value', scale: true, splitLine: { lineStyle: { color: 'rgba(100,117,149,0.1)' } }, axisLabel: { color: '#647595', fontSize: 10 } },
+    series,
   }
 }
 
+function buildCategoryDonutOption(items) {
+  const counts = FILTERS
+    .map((cat) => ({ name: CATEGORY_STYLES[cat].label, value: items.filter((i) => i.category === cat).length, itemStyle: { color: CHART_CAT_COLORS[cat], shadowBlur: 8, shadowColor: CHART_CAT_COLORS[cat] + '66' } }))
+    .filter((d) => d.value > 0)
+  return {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', backgroundColor: 'rgba(4,13,28,0.94)', borderColor: 'rgba(123,195,255,0.18)', borderWidth: 1, textStyle: { color: '#eef4ff' }, formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie',
+      radius: ['50%', '76%'],
+      center: ['50%', '52%'],
+      data: counts,
+      label: { color: '#9cc4eb', fontSize: 10, formatter: '{b}\n{d}%' },
+      labelLine: { lineStyle: { color: 'rgba(123,195,255,0.28)' } },
+      itemStyle: { borderRadius: 4, borderColor: 'rgba(2,8,20,0.6)', borderWidth: 2 },
+      animationType: 'expansion',
+      animationDuration: 800,
+    }],
+  }
+}
+
+async function refreshIntelCharts() {
+  await nextTick()
+  if (!currentSectorData.value) return
+  const initChart = (refEl, instance) => {
+    if (!refEl.value) return instance
+    return instance || echarts.init(refEl.value, null, { renderer: 'canvas' })
+  }
+  intelTrendChart = initChart(intelTrendRef, intelTrendChart)
+  intelRankingChart = initChart(intelRankingRef, intelRankingChart)
+  intelDonutChart = initChart(intelDonutRef, intelDonutChart)
+  intelScatterChart = initChart(intelScatterRef, intelScatterChart)
+  intelTrendChart?.setOption(buildTrendOption(currentSectorData.value, echarts), true)
+  intelRankingChart?.setOption(buildRankingOption(currentSectorData.value, echarts), true)
+  intelDonutChart?.setOption(buildCategoryDonutOption(relatedParticleItems.value), true)
+  intelScatterChart?.setOption(buildParticleScatterOption(relatedParticleItems.value), true)
+  intelTrendChart?.resize()
+  intelRankingChart?.resize()
+  intelDonutChart?.resize()
+  intelScatterChart?.resize()
+}
+
+function disposeIntelCharts() {
+  intelTrendChart?.dispose(); intelTrendChart = null
+  intelRankingChart?.dispose(); intelRankingChart = null
+  intelDonutChart?.dispose(); intelDonutChart = null
+  intelScatterChart?.dispose(); intelScatterChart = null
+}
+
+watch(selectedParticleData, (val) => {
+  if (val) refreshIntelCharts()
+  else disposeIntelCharts()
+})
+
+watch(currentSector, () => {
+  if (selectedParticleData.value) refreshIntelCharts()
+})
+
+function tweenMaterialOpacity(material, target, duration = 0.55) {
+  if (!material || typeof material.opacity !== 'number') return
+  material.transparent = true
+  gsap.killTweensOf(material)
+  gsap.to(material, {
+    opacity: target,
+    duration,
+    ease: 'power2.inOut',
+  })
+}
+
+function tweenGroupOpacity(group, meshTarget, lineTarget, duration = 0.55) {
+  if (!group) return
+  group.traverse((child) => {
+    if (!child.material) return
+    if (child.isMesh) tweenMaterialOpacity(child.material, meshTarget, duration)
+    if (child.isLine || child.isLineLoop || child.isLineSegments) tweenMaterialOpacity(child.material, lineTarget, duration)
+  })
+}
+
+function setSceneDetailMode(active) {
+  tooltip.visible = false
+  gsap.killTweensOf(mapRoot.position)
+  gsap.killTweensOf(mapRoot.scale)
+  gsap.killTweensOf(particleRoot.position)
+  gsap.killTweensOf(particleRoot.scale)
+  gsap.killTweensOf(mapRoot.rotation)
+  const dur = active ? 0.92 : 0.78
+  const ease = active ? 'power3.inOut' : 'power2.inOut'
+  gsap.to(mapRoot.position, {
+    x: active ? 7.2 : 0,
+    y: active ? 0.6 : 0,
+    z: active ? -0.5 : 0,
+    duration: dur,
+    ease,
+  })
+  gsap.to(mapRoot.scale, {
+    x: active ? 0.52 : 1,
+    y: active ? 0.52 : 1,
+    z: active ? 0.52 : 1,
+    duration: dur,
+    ease,
+  })
+  gsap.to(mapRoot.rotation, {
+    x: active ? -0.06 : 0,
+    y: active ? -1.15 : 0,
+    z: active ? 0.04 : 0,
+    duration: dur,
+    ease,
+  })
+  gsap.to(particleRoot.position, {
+    x: active ? 7.0 : 0,
+    y: active ? 0.55 : 0,
+    z: active ? -0.5 : 0,
+    duration: dur,
+    ease,
+  })
+  gsap.to(particleRoot.scale, {
+    x: active ? 0.52 : 1,
+    y: active ? 0.52 : 1,
+    z: active ? 0.52 : 1,
+    duration: dur,
+    ease,
+  })
+  tweenMaterialOpacity(globeMesh?.material, active ? 0.09 : 1, dur)
+  tweenMaterialOpacity(atmosphere?.material, active ? 0.02 : 0.12, dur)
+  tweenMaterialOpacity(globeWire?.material, active ? 0.03 : 0.2, dur)
+  tweenMaterialOpacity(heroHalo?.material, active ? 0.004 : 0.02, dur)
+  tweenGroupOpacity(provinceRoot, active ? 0.05 : 0.18, active ? 0.1 : 0.88, dur)
+  tweenGroupOpacity(cityRoot, active ? 0.04 : 0.22, active ? 0.08 : 0.82, dur)
+  tweenGroupOpacity(focusRoot, active ? 0.06 : 0.28, active ? 0.14 : 0.92, dur)
+  tweenGroupOpacity(selectionRoot, active ? 0.03 : 0.2, active ? 0.06 : 0.32, dur)
+}
+
 function openDetailFromList(item) {
-  emit('open-detail', buildDetailPayload(item))
+  selectedParticleData.value = item
+  selectedParticleIndex = typeof item.index === 'number' ? item.index : selectedParticleIndex
+  activeCategory.value = item.category
+  setSceneDetailMode(true)
 }
 
 function closeParticleDetail() {
   selectedParticleData.value = null
   selectedParticleIndex = -1
+  setSceneDetailMode(false)
 }
 
-let scene, camera, renderer, composer, controls, raycaster, clock, stars, heroHalo, atmosphere
+let scene, camera, renderer, composer, controls, raycaster, clock, stars, heroHalo, atmosphere, globeMesh, globeWire
+const globeRadius = 5.2
 const globeSphere = new THREE.Sphere(new THREE.Vector3(), globeRadius + 0.18)
 let rafId = 0
-const globeRadius = 5.2
 const mouseNdc = new THREE.Vector2()
 const dummy = new THREE.Object3D()
 const tempColor = new THREE.Color()
 const tempDimColor = new THREE.Color(0x33506d)
 
-
 const FOCUS_PROVINCE_GEOS = {
   '320000': jiangsuGeo,
   '420000': hubeiGeo,
 }
-
 const FOCUS_CITY_DISTRICT_GEOS = {
   '321000': yangzhouGeo,
   '420100': wuhanGeo,
@@ -252,6 +519,7 @@ function hasDistrictGeo(code) {
 const provinceRoot = new THREE.Group()
 const cityRoot = new THREE.Group()
 const focusRoot = new THREE.Group()
+const mapRoot = new THREE.Group()
 const selectionRoot = new THREE.Group()
 const particleRoot = new THREE.Group()
 
@@ -337,7 +605,9 @@ function pickGeoFeature(event) {
   mouseNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
   raycaster.setFromCamera(mouseNdc, camera)
   const hitPoint = new THREE.Vector3()
-  const globeHit = raycaster.ray.intersectSphere(globeSphere, hitPoint)
+  const inverse = new THREE.Matrix4().copy(mapRoot.matrixWorld).invert()
+  const localRay = raycaster.ray.clone().applyMatrix4(inverse)
+  const globeHit = localRay.intersectSphere(globeSphere, hitPoint)
   if (!globeHit) return null
   const lonLat = xyzToLonLat(hitPoint)
 
@@ -507,19 +777,23 @@ function createBaseGlobe() {
     new THREE.SphereGeometry(globeRadius, 72, 72),
     new THREE.MeshStandardMaterial({ color: 0x06101d, roughness: 0.94, metalness: 0.04 }),
   )
-  scene.add(globe)
+  globeMesh = globe
+  globeMesh.material.transparent = true
+  globeMesh.material.opacity = 1
+  mapRoot.add(globeMesh)
 
   atmosphere = new THREE.Mesh(
     new THREE.SphereGeometry(globeRadius + 0.1, 40, 40),
     new THREE.MeshBasicMaterial({ color: 0x2e93ff, transparent: true, opacity: 0.12, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false }),
   )
-  scene.add(atmosphere)
+  mapRoot.add(atmosphere)
 
   const wire = new THREE.LineSegments(
     new THREE.WireframeGeometry(new THREE.SphereGeometry(globeRadius + 0.01, 16, 12)),
     new THREE.LineBasicMaterial({ color: 0x163456, transparent: true, opacity: 0.2 }),
   )
-  scene.add(wire)
+  globeWire = wire
+  mapRoot.add(globeWire)
 
   const chinaNormal = getNormalFromCenter([104.113106, 37.570693])
   heroHalo = new THREE.Mesh(
@@ -528,7 +802,7 @@ function createBaseGlobe() {
   )
   heroHalo.position.copy(chinaNormal.clone().multiplyScalar(globeRadius + 0.04))
   heroHalo.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), chinaNormal)
-  scene.add(heroHalo)
+  mapRoot.add(heroHalo)
 }
 
 function initScene() {
@@ -556,10 +830,11 @@ function initScene() {
   raycaster.params.Line.threshold = 0.045
   clock = new THREE.Clock()
 
-  scene.add(provinceRoot)
-  scene.add(cityRoot)
-  scene.add(focusRoot)
-  scene.add(selectionRoot)
+  mapRoot.add(provinceRoot)
+  mapRoot.add(cityRoot)
+  mapRoot.add(focusRoot)
+  mapRoot.add(selectionRoot)
+  scene.add(mapRoot)
   scene.add(particleRoot)
   scene.add(new THREE.AmbientLight(0xa5bfe5, 0.7))
 
@@ -895,7 +1170,7 @@ function buildProvinceFocusPreview(provinceCode) {
         layer: 'focus-preview',
         radius: globeRadius + 0.345,
         baseRadius: globeRadius + 0.33,
-        opacity: 0.001,
+        opacity: 0.003,
       })
       const lineGroup = buildGeoFeatureLineGroup(feature, {
         type: 'city',
@@ -1118,9 +1393,9 @@ function getParticleFocusIndex() {
 }
 
 function getCategoryVisual(category) {
-  if (category === 'Talent') return { radius: [0.08, 0.16], scale: 2.9 }
-  if (category === 'Paper') return { radius: [0.18, 0.28], scale: 2.1 }
-  if (category === 'Enterprise') return { radius: [0.28, 0.38], scale: 2.3 }
+  if (category === 'Talent') return { radius: [0.08, 0.14], scale: 1.18 }
+  if (category === 'Paper') return { radius: [0.16, 0.24], scale: 1.04 }
+  if (category === 'Enterprise') return { radius: [0.22, 0.32], scale: 1.1 }
   return { radius: [0.24, 0.36], scale: 1 }
 }
 
@@ -1276,8 +1551,7 @@ function focusTo(center, distance = 7.5, duration = 1.25) {
 function selectProvinceByData(data) {
   selectedProvince.value = { code: data.code, name: data.name, center: data.center }
   selectedCity.value = null
-  selectedParticleData.value = null
-  selectedParticleIndex = -1
+  closeParticleDetail()
   hoveredParticleIndex = -1
   resetProvinceLayer()
   resetProvinceTransforms()
@@ -1305,8 +1579,7 @@ function selectCityByData(data) {
   const meta = getLocationMeta(data.code) || data.entry || null
   if (!meta) return
   selectedCity.value = { code: String(data.code), name: data.name, center: meta.centroid || meta.center, provinceName: selectedProvince.value?.name || '' }
-  selectedParticleData.value = null
-  selectedParticleIndex = -1
+  closeParticleDetail()
   hoveredParticleIndex = -1
   if (isFocusProvince(selectedProvince.value?.code)) setFocusCityHighlight(data.code)
   buildDistrictOutline(data.code)
@@ -1354,7 +1627,8 @@ function pickParticleFallback(event) {
 function focusParticleDetail(meta, pos) {
   selectedParticleData.value = meta
   selectedParticleIndex = typeof meta.index === 'number' ? meta.index : -1
-  emit('open-detail', buildDetailPayload(meta))
+  activeCategory.value = meta.category
+  setSceneDetailMode(true)
 }
 
 function pick(event) {
@@ -1367,62 +1641,91 @@ function pick(event) {
 }
 
 function onPointerMove(event) {
+  tooltip.visible = false
+
+  // Detail panel mode: suppress all map hover
+  if (selectedParticleData.value) return
+
   const hits = pick(event)
-  const geoHit = pickGeoFeature(event)
-  if (!hits.length && !geoHit) {
-    hoveredParticleIndex = -1
-    tooltip.visible = false
-    return
-  }
   const hit = hits[0]
-  if (hit?.object?.userData?.type === 'particle-cloud' && typeof hit.instanceId === 'number') {
-    hoveredParticleIndex = hit.instanceId
-    const meta = particleMeta[hit.instanceId]
-    tooltip.visible = true
-    tooltip.x = event.clientX + 16
-    tooltip.y = event.clientY + 16
-    tooltip.title = meta.title
-    tooltip.subtitle = `${CATEGORY_STYLES[meta.category].label} 路 ${meta.value}`
+  const hitData = hit?.object?.userData || {}
+
+  // ── City level (particles visible): only particle hover ──────────────
+  if (selectedCity.value) {
+    if (hitData.type === 'particle-cloud' && typeof hit.instanceId === 'number') {
+      hoveredParticleIndex = hit.instanceId
+      const meta = particleMeta[hit.instanceId]
+      if (!meta) { hoveredParticleIndex = -1; return }
+      tooltip.visible = true
+      tooltip.x = event.clientX + 16
+      tooltip.y = event.clientY + 16
+      tooltip.title = meta.title
+      tooltip.subtitle = `${CATEGORY_STYLES[meta.category].label} · ${meta.value}`
+    } else {
+      hoveredParticleIndex = -1
+    }
     return
   }
-  const hitData = hit?.object?.userData || {}
-  const previewCityHit = hitData.type === 'city' && hitData.layer === 'focus-preview'
-  const data = previewCityHit ? hitData : (geoHit || hitData || {})
+
+  hoveredParticleIndex = -1
+
+  // ── Province level: only city-marker hover (no globe geo pick) ────────
+  if (selectedProvince.value) {
+    if (hitData.type === 'city') {
+      tooltip.visible = true
+      tooltip.x = event.clientX + 16
+      tooltip.y = event.clientY + 16
+      tooltip.title = hitData.name
+      tooltip.subtitle = '点击钻取城市'
+    }
+    return
+  }
+
+  // ── National level: province geo hover ───────────────────────────────
+  const geoHit = pickGeoFeature(event)
+  if (!geoHit) return
   tooltip.visible = true
   tooltip.x = event.clientX + 16
   tooltip.y = event.clientY + 16
-  if (data.type === 'province') {
-    tooltip.title = data.name
-    tooltip.subtitle = '点击聚焦省份'
-  } else if (data.type === 'city') {
-    tooltip.title = data.name
-    tooltip.subtitle = '点击钻取城市'
-  } else {
-    tooltip.title = '鑺傜偣'
-    tooltip.subtitle = '点击查看详情'
-  }
+  tooltip.title = geoHit.name
+  tooltip.subtitle = '点击聚焦省份'
 }
 
 function onClick(event) {
   const hits = pick(event)
-  const geoHit = pickGeoFeature(event)
   const hit = hits[0]
-  if (hit?.object?.userData?.type === 'particle-cloud' && typeof hit.instanceId === 'number') {
+  const hitData = hit?.object?.userData || {}
+
+  // ── Particle click: highest priority at any level ─────────────────────
+  if (!selectedParticleData.value && hitData.type === 'particle-cloud' && typeof hit?.instanceId === 'number') {
     hoveredParticleIndex = hit.instanceId
     const meta = particleMeta[hit.instanceId]
     if (meta) focusParticleDetail(meta, getParticleWorldPosition(meta, clock.getElapsedTime()))
     return
   }
-  const fallbackParticle = pickParticleFallback(event)
-  if (fallbackParticle) {
-    focusParticleDetail(fallbackParticle.meta, fallbackParticle.pos)
+
+  // ── Detail mode: map clicks are suppressed (use close button) ─────────
+  if (selectedParticleData.value) return
+
+  // ── City level: fallback particle pick only ───────────────────────────
+  if (selectedCity.value) {
+    const fallback = pickParticleFallback(event)
+    if (fallback) focusParticleDetail(fallback.meta, fallback.pos)
     return
   }
-  const hitData = hit?.object?.userData || {}
-  const previewCityHit = hitData.type === 'city' && hitData.layer === 'focus-preview'
-  const data = previewCityHit ? hitData : (geoHit || hitData || {})
-  if (data.type === 'province') selectProvinceByData(data)
-  else if (data.type === 'city') selectCityByData(data)
+
+  // ── Province level: city marker click ────────────────────────────────
+  if (selectedProvince.value) {
+    if (hitData.type === 'city') {
+      selectCityByData(hitData)
+      return
+    }
+    return
+  }
+
+  // ── National level: province geo click ───────────────────────────────
+  const geoHit = pickGeoFeature(event)
+  if (geoHit?.type === 'province') selectProvinceByData(geoHit)
 }
 
 function updateParticles(elapsed) {
@@ -1434,8 +1737,8 @@ function updateParticles(elapsed) {
     const category = mesh.userData.category
     const isActiveCategory = category === activeCategory.value
     mesh.material.opacity = focusIndex >= 0
-      ? (isActiveCategory ? 1 : 0.18)
-      : (isActiveCategory ? 1 : 0.28)
+      ? (isActiveCategory ? 0.78 : 0.12)
+      : (isActiveCategory ? 0.92 : 0.22)
 
     metaIndices.forEach((metaIndex, localIndex) => {
       const meta = particleMeta[metaIndex]
@@ -1444,7 +1747,7 @@ function updateParticles(elapsed) {
       const isLinked = focusIndex >= 0 && meta.connections?.has(focusIndex)
       let emphasis = isActiveCategory ? 1 : 0.48
       if (focusIndex >= 0) emphasis = isFocused || isLinked ? 1.06 : emphasis * 0.28
-      const scale = meta.size * meta.scaleBoost * (1.1 + emphasis * 0.58 + Math.sin(elapsed * 1.2 + metaIndex) * 0.04)
+      const scale = meta.size * meta.scaleBoost * (0.92 + emphasis * 0.24 + Math.sin(elapsed * 1.2 + metaIndex) * 0.02)
       dummy.position.copy(pos)
       dummy.scale.setScalar(scale)
       dummy.updateMatrix()
@@ -1507,6 +1810,10 @@ function onResize() {
   camera.updateProjectionMatrix()
   renderer.setSize(width, height)
   composer.setSize(width, height)
+  intelTrendChart?.resize()
+  intelRankingChart?.resize()
+  intelDonutChart?.resize()
+  intelScatterChart?.resize()
 }
 
 onMounted(() => {
@@ -1521,10 +1828,6 @@ onMounted(() => {
   animate()
 })
 
-watch(activeCategory, () => {
-  selectedParticleData.value = null
-  selectedParticleIndex = -1
-})
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(rafId)
@@ -1534,6 +1837,7 @@ onBeforeUnmount(() => {
     containerRef.value.removeEventListener('click', onClick)
   }
   clearParticleEffects()
+  disposeIntelCharts()
   disposeGroup(selectionRoot)
   disposeGroup(focusRoot)
   disposeGroup(cityRoot)
@@ -1556,7 +1860,7 @@ onBeforeUnmount(() => {
 .top-brand h1 { margin: 0; font-size: 24px; font-weight: 700; }
 .brand-badge { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; background: rgba(82, 164, 255, 0.12); border: 1px solid rgba(126, 198, 255, 0.24); }
 .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #54f3d2; box-shadow: 0 0 12px #54f3d2; }
-.hero-panel { top: 96px; left: 18px; width: min(560px, calc(100vw - 470px)); border-radius: 18px; padding: 10px 12px; display: block; pointer-events: none; }
+.hero-panel { top: 96px; left: 18px; width: min(560px, calc(100vw - 420px)); border-radius: 18px; padding: 10px 12px; display: block; pointer-events: none; transition: opacity 0.45s ease, transform 0.45s ease; }
 .hero-copy { pointer-events: auto; }
 .hero-copy h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.15; }
 .hero-copy p:last-of-type { margin: 0; max-width: 520px; font-size: 12px; line-height: 1.4; color: #a9cbf3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1575,20 +1879,157 @@ onBeforeUnmount(() => {
 .trend-col { display: grid; justify-items: center; gap: 6px; }
 .trend-track { width: 16px; height: 46px; border-radius: 999px; background: rgba(197, 222, 255, 0.08); display: flex; align-items: end; overflow: hidden; }
 .trend-fill { width: 100%; border-radius: 999px; background: linear-gradient(180deg, #85f1ff, #4c79ff); box-shadow: 0 0 14px rgba(86, 167, 255, 0.35); transition: height 0.45s ease; }
-.province-panel { left: 18px; top: 210px; width: 228px; border-radius: 16px; padding: 10px 12px; pointer-events: none; }
+.province-panel { left: 18px; top: 228px; width: 228px; border-radius: 16px; padding: 10px 12px; pointer-events: none; transition: opacity 0.45s ease, transform 0.45s ease; }
 .province-menu-grid { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .province-tip { display: none; }
-.side-panel { top: 96px; right: 18px; bottom: 78px; width: 332px; border-radius: 22px; padding: 16px; display: grid; grid-template-rows: auto auto 1fr; gap: 14px; }
-.meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.detail-section { min-height: 0; display: grid; grid-template-rows: auto 1fr; gap: 12px; }
-.detail-list { overflow: auto; padding-right: 4px; }
-.detail-card { border-radius: 16px; padding: 14px; margin-bottom: 12px; background: linear-gradient(180deg, rgba(18, 36, 71, 0.78), rgba(11, 22, 42, 0.7)); border: 1px solid rgba(120, 191, 255, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03); }
-.detail-card.selected { border-color: rgba(130, 219, 255, 0.38); box-shadow: 0 0 0 1px rgba(130, 219, 255, 0.18), 0 0 28px rgba(79, 142, 255, 0.18); }
-.detail-card.empty { min-height: 96px; }
 .detail-top { display: flex; align-items: center; justify-content: space-between; }
 .type-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 58px; padding: 6px 10px; border-radius: 999px; background: rgba(77, 136, 220, 0.24); color: #d8f6ff; font-size: 12px; }
-.detail-card h4 { margin: 12px 0 8px; font-size: 16px; line-height: 1.45; }
-.detail-card p { margin: 0; color: #9cc4eb; line-height: 1.6; font-size: 13px; }
+
+/* ── Intel Dashboard Panel ─────────────────────────────────────── */
+.intel-dash-panel {
+  top: 96px; left: 18px; right: 18px; bottom: 78px;
+  border-radius: 20px; overflow: hidden;
+  display: flex; flex-direction: column;
+  z-index: 14; opacity: 0;
+  transform: translateX(-56px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.72s cubic-bezier(0.16, 1, 0.3, 1), transform 0.72s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.intel-dash-panel.active { opacity: 1; transform: translateX(0) scale(1); pointer-events: auto; }
+
+/* Transparent glass overrides — panel floats over the globe background */
+.intel-dash-panel.glass-card {
+  background: rgba(2, 6, 18, 0.18);
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border-color: rgba(88, 213, 255, 0.1);
+  box-shadow: 0 0 100px rgba(20, 60, 180, 0.1), inset 0 0 0 1px rgba(88, 213, 255, 0.05);
+}
+.intel-dash-panel .glass-inner {
+  background: rgba(10, 24, 58, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(88, 213, 255, 0.09);
+  box-shadow: none;
+}
+.intel-dash-panel .dash-header {
+  background: rgba(5, 14, 36, 0.38);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.intel-dash-panel .dash-intel-block {
+  background: rgba(6, 14, 36, 0.2);
+  border-color: rgba(88, 213, 255, 0.09);
+}
+
+/* Header */
+.dash-header {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 18px 10px;
+  border-bottom: 1px solid rgba(123, 195, 255, 0.1);
+  background: linear-gradient(90deg, rgba(21, 45, 93, 0.55), rgba(9, 20, 44, 0.42));
+  animation: dash-fade-in 0.5s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.dash-path .eyebrow { margin: 0 0 3px; font-size: 10px; }
+.dash-breadcrumb { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
+.dash-breadcrumb .bc-sep { color: rgba(123, 195, 255, 0.32); }
+.dash-breadcrumb strong { color: #7fe8ff; }
+.dash-header-right { display: flex; align-items: center; gap: 11px; }
+.live-badge-sm { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; background: rgba(82, 164, 255, 0.1); border: 1px solid rgba(126, 198, 255, 0.16); font-size: 11px; color: #a8d8ff; }
+
+/* Body grid */
+.dash-body {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: 1fr 352px;
+  gap: 10px; padding: 10px; overflow: hidden;
+}
+.dash-left { display: flex; flex-direction: column; gap: 9px; min-height: 0; overflow: hidden; }
+.dash-right {
+  display: flex; flex-direction: column; gap: 9px; min-height: 0;
+  overflow-y: auto; padding-right: 2px;
+}
+.dash-right::-webkit-scrollbar { width: 3px; }
+.dash-right::-webkit-scrollbar-track { background: transparent; }
+.dash-right::-webkit-scrollbar-thumb { background: rgba(123,195,255,0.15); border-radius: 999px; }
+
+/* Node hero row */
+.node-hero-row {
+  flex-shrink: 0; border-radius: 14px; padding: 13px 15px;
+  display: flex; align-items: center; gap: 13px; overflow: hidden; position: relative;
+  animation: dash-fade-up 0.55s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.node-hero-accent-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 2px; }
+.node-chip { flex-shrink: 0; font-size: 11px; border: 1px solid; padding: 4px 10px; }
+.node-hero-text { flex: 1; min-width: 0; }
+.node-hero-text h2 { margin: 0 0 4px; font-size: 16px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-hero-text p { margin: 0; font-size: 12px; color: #9cc4eb; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.node-value-badge { flex-shrink: 0; text-align: center; padding: 8px 14px; border-radius: 12px; background: rgba(10, 20, 44, 0.6); border: 1px solid rgba(123, 195, 255, 0.14); }
+.node-value-badge strong { display: block; font-size: 28px; line-height: 1; font-weight: 800; }
+.node-value-badge span { display: block; font-size: 10px; color: #7fb9ff; margin-top: 3px; }
+
+/* KPI row */
+.kpi-row {
+  flex-shrink: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  animation: dash-fade-up 0.55s 0.17s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.kpi-card { border-radius: 12px; padding: 10px 12px; border-left: 2px solid var(--kc, #58d5ff); }
+.kpi-label { display: block; font-size: 10px; color: #8fbdf0; margin-bottom: 4px; }
+.kpi-value { display: block; font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.kpi-track { height: 3px; background: rgba(123,195,255,0.1); border-radius: 999px; overflow: hidden; }
+.kpi-fill { height: 100%; border-radius: 999px; transition: width 1s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 0 8px currentColor; }
+
+/* Chart rows */
+.chart-row-top {
+  flex-shrink: 0; display: grid; grid-template-columns: 3fr 2fr; gap: 9px;
+  animation: dash-fade-up 0.55s 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.chart-row-bot {
+  flex: 1; min-height: 0;
+  animation: dash-fade-up 0.55s 0.31s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.chart-row-bot > .chart-panel { height: 100%; }
+.chart-panel { border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; overflow: hidden; }
+.chart-panel-head { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.chart-panel-head h4 { margin: 0; font-size: 12px; font-weight: 600; color: #b8d8f8; }
+.intel-chart-box { flex: 1; min-height: 120px; }
+.scatter-box { min-height: 180px; }
+
+/* Right column */
+.scatter-panel {
+  flex-shrink: 0;
+  animation: dash-fade-left 0.6s 0.12s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.summary-strip {
+  flex-shrink: 0; border-radius: 14px; padding: 11px 14px;
+  animation: dash-fade-left 0.6s 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.summary-strip .eyebrow { margin: 0 0 5px; }
+.summary-body { margin: 0; font-size: 12px; color: #9cc4eb; line-height: 1.6; }
+.dash-intel-block {
+  flex-shrink: 0; border-radius: 14px; padding: 11px 13px;
+  background: linear-gradient(180deg, rgba(10,23,48,0.52), rgba(6,15,32,0.42));
+  border: 1px solid rgba(123,195,255,0.1);
+  animation: dash-fade-left 0.6s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; font-size: 12px; font-weight: 600; color: #b8d8f8; }
+.intel-flow-card { border-radius: 12px; padding: 10px 12px; margin-bottom: 7px; }
+.intel-flow-card:last-child { margin-bottom: 0; }
+.intel-flow-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.intel-flow-head time { margin-left: auto; font-size: 10px; color: #7fb9ff; }
+.intel-flow-card h4 { margin: 0 0 4px; font-size: 12px; line-height: 1.45; font-weight: 600; color: #dff0ff; }
+.intel-flow-card p { margin: 0; font-size: 11px; color: #9cc4eb; line-height: 1.5; }
+.intel-tag-sm { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; background: rgba(77,136,220,0.22); color: #d8f6ff; font-size: 10px; }
+.impact-chip { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; }
+.impact-chip.pos { background: rgba(42,200,120,0.15); color: #52e8a4; border: 1px solid rgba(42,200,120,0.25); }
+.impact-chip.neg { background: rgba(255,92,92,0.13); color: #ff8a8a; border: 1px solid rgba(255,92,92,0.22); }
+.impact-chip.neu { background: rgba(200,180,80,0.13); color: #f0d060; border: 1px solid rgba(200,180,80,0.22); }
+
+/* Shared components */
+.panel-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: rgba(42,82,148,0.3); border: 1px solid rgba(123,192,255,0.14); color: #9cc4eb; font-size: 10px; }
+
+@keyframes dash-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dash-fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes dash-fade-left { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
 .tag-row { margin-top: 12px; }
 .tag-row span, .legend-pill { border-radius: 999px; padding: 6px 10px; background: rgba(70, 104, 167, 0.22); border: 1px solid rgba(123, 192, 255, 0.14); color: #d4ebff; font-size: 12px; }
 .footer-bar { left: 18px; right: 18px; bottom: 18px; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1598,28 +2039,20 @@ onBeforeUnmount(() => {
 .tooltip { position: fixed; z-index: 30; min-width: 180px; pointer-events: none; border-radius: 12px; padding: 10px 12px; background: rgba(4, 13, 28, 0.94); border: 1px solid rgba(129, 206, 255, 0.18); box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28); }
 .tooltip p { margin: 0; font-size: 13px; font-weight: 700; }
 .tooltip span { display: block; margin-top: 4px; color: #9fc5ec; font-size: 12px; }
-.talent-intro { right: 360px; top: 110px; width: 320px; border-radius: 18px; padding: 14px; }
-.talent-intro-body { display: grid; gap: 10px; }
-.talent-intro-top { display: flex; align-items: center; justify-content: space-between; }
-.talent-intro h3 { margin: 0; font-size: 22px; }
-.talent-intro h4 { margin: 0; font-size: 16px; color: #e9f7ff; line-height: 1.5; }
-.talent-intro p { margin: 0; color: #9fc5ec; line-height: 1.6; font-size: 13px; }
 .close-btn { border: 1px solid rgba(123, 192, 255, 0.14); background: rgba(70, 104, 167, 0.22); color: #d4ebff; border-radius: 999px; padding: 6px 10px; cursor: pointer; }
 @media (max-width: 1380px) {
   .detail-page { left: 18px; width: auto; }
   .hero-panel { width: auto; right: 18px; grid-template-columns: 1fr; }
   .province-panel { top: 236px; width: 210px; }
-  .side-panel { display: none; }
+  .node-detail-panel { width: calc(100vw - 36px); bottom: 78px; }
 }
+.screen-root.detail-mode .top-brand { opacity: 0.62; transform: translateY(-3px); transition: opacity 0.7s ease, transform 0.7s ease; }
+.screen-root.detail-mode .screen-canvas { cursor: default; }
+.screen-root.detail-mode .hero-panel,
+.screen-root.detail-mode .province-panel { opacity: 0; transform: translateX(-32px); pointer-events: none; }
+.screen-root.detail-mode .footer-bar { opacity: 0.4; transition: opacity 0.6s ease; }
+.screen-root.detail-mode .intel-dash-panel { opacity: 1; transform: translateX(0) scale(1); pointer-events: auto; }
 </style>
-
-
-
-
-
-
-
-
 
 
 
