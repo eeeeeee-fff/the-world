@@ -93,27 +93,34 @@ export function getDetailItems(cityCode, category) {
 
 export function getParticleSource(cityCode, category = null) {
   const city = String(cityCode)
-  const items = category ? getDetailItems(city, category) : FILTERS.flatMap((itemCategory) => getDetailItems(city, itemCategory))
-  if (!items.length) return []
-  const list = []
-  const total = Math.max(items.length, category ? 10 : 12)
+  const buildParticles = (items, suffix) => {
+    if (!items.length) return []
+    const list = []
+    const total = 5
 
-  for (let i = 0; i < total; i += 1) {
-    const item = items[i % items.length]
-    list.push({
-      ...item,
-      id: `${item.id}-particle-${i}`,
-      angle: Math.random() * Math.PI * 2,
-      orbitRadius: 0.42 + Math.random() * 0.9,
-      orbitTilt: (Math.random() - 0.5) * 0.7,
-      radialOffset: 0.18 + Math.random() * 0.46,
-      speed: 0.38 + Math.random() * 0.72,
-      size: 0.014 + Math.random() * 0.01,
-      band: i % 3,
-    })
+    for (let i = 0; i < total; i += 1) {
+      const item = items[i % items.length]
+      list.push({
+        ...item,
+        id: `${item.id}-particle-${suffix}-${i}`,
+        angle: Math.random() * Math.PI * 2,
+        orbitRadius: 0.42 + Math.random() * 0.9,
+        orbitTilt: (Math.random() - 0.5) * 0.7,
+        radialOffset: 0.18 + Math.random() * 0.46,
+        speed: 0.38 + Math.random() * 0.72,
+        size: 0.014 + Math.random() * 0.01,
+        band: i % 3,
+      })
+    }
+
+    return list
   }
 
-  return list
+  if (category) {
+    return buildParticles(getDetailItems(city, category), category)
+  }
+
+  return FILTERS.flatMap((itemCategory) => buildParticles(getDetailItems(city, itemCategory), itemCategory))
 }
 
 export function getProvinceHero(provinceCode) {

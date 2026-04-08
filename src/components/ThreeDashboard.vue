@@ -41,7 +41,7 @@
       </div>
     </section>
 
-    <section v-if="selectedProvince" class="hud province-panel glass-card">
+    <section v-if="selectedProvince && !selectedCity" class="hud province-panel glass-card">
       <div class="section-head compact">
         <span>省级菜单</span>
         <strong>{{ selectedProvince.name }}</strong>
@@ -56,6 +56,28 @@
         </button>
       </div>
       <p class="province-tip">点击省份后可钻取城市。江苏、湖北已接入真实市级边界，扬州、武汉已接入真实城市数据。</p>
+    </section>
+
+
+    <section v-if="selectedCity && cityQuickEntries.length" class="hud city-quick-panel glass-card">
+      <div class="section-head compact">
+        <span>{{ CATEGORY_STYLES[activeCategory].label }}&#24555;&#25463;&#20837;&#21475;</span>
+        <strong>{{ selectedCity.name }}</strong>
+      </div>
+      <div class="city-quick-grid">
+        <button
+          v-for="item in cityQuickEntries"
+          :key="item.id"
+          class="city-quick-card"
+          :style="{ '--quick-color': CHART_CAT_COLORS[activeCategory] }"
+          @click="openQuickEntry(item)"
+        >
+          <span class="city-quick-type">{{ CATEGORY_STYLES[activeCategory].label }}</span>
+          <strong :title="item.title">{{ item.name }}</strong>
+          <p :title="item.title">{{ item.title }}</p>
+          <span class="city-quick-link">&#36827;&#20837;&#35814;&#24773;</span>
+        </button>
+      </div>
     </section>
 
 
@@ -498,6 +520,10 @@ const heroStats = computed(() => {
 })
 
 const provinceMenuItems = computed(() => !selectedProvince.value ? [] : getProvinceChildren(selectedProvince.value.code))
+const cityQuickEntries = computed(() => {
+  if (!selectedCity.value) return []
+  return getDetailItems(selectedCity.value.code, activeCategory.value)
+})
 const detailItems = computed(() => {
   if (selectedParticleData.value) {
     const base = getDetailItems(selectedCity.value?.code || '321000', activeCategory.value)
@@ -961,6 +987,11 @@ function setSceneDetailMode(active) {
 function openDetailFromList(item) {
   const pos = item.index >= 0 ? getParticleWorldPosition(particleMeta[item.index], clock.getElapsedTime()) : null
   focusParticleDetail(item, pos)
+}
+
+function openQuickEntry(item) {
+  if (!item) return
+  focusParticleDetail({ ...item }, null)
 }
 
 function closeParticleDetail() {
@@ -2571,6 +2602,14 @@ onBeforeUnmount(() => {
 .trend-track { width: 16px; height: 46px; border-radius: 999px; background: rgba(197, 222, 255, 0.08); display: flex; align-items: end; overflow: hidden; }
 .trend-fill { width: 100%; border-radius: 999px; background: linear-gradient(180deg, #85f1ff, #4c79ff); box-shadow: 0 0 14px rgba(86, 167, 255, 0.35); transition: height 0.45s ease; }
 .province-panel { left: 18px; top: 292px; width: 228px; border-radius: 16px; padding: 10px 12px; pointer-events: none; transition: opacity 0.45s ease, transform 0.45s ease; }
+.city-quick-panel { left: 18px; top: 292px; width: 268px; border-radius: 18px; padding: 12px; pointer-events: auto; transition: opacity 0.45s ease, transform 0.45s ease; }
+.city-quick-grid { margin-top: 10px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+.city-quick-card { width: 100%; text-align: left; border: 1px solid rgba(128, 199, 255, 0.12); background: linear-gradient(180deg, rgba(19, 37, 77, 0.82), rgba(10, 22, 48, 0.88)); border-radius: 14px; padding: 12px; color: #dff2ff; cursor: pointer; transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease; }
+.city-quick-card:hover { transform: translateX(4px); border-color: color-mix(in srgb, var(--quick-color) 55%, rgba(128, 199, 255, 0.12)); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+.city-quick-type { display: inline-flex; align-items: center; margin-bottom: 8px; padding: 4px 9px; border-radius: 999px; font-size: 11px; color: #08111f; background: var(--quick-color); }
+.city-quick-card strong { display: block; font-size: 15px; line-height: 1.35; color: #eef9ff; }
+.city-quick-card p { margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: #9fc5ec; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.city-quick-link { display: inline-block; margin-top: 10px; font-size: 11px; color: var(--quick-color); letter-spacing: 0.04em; }
 .province-menu-grid { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .province-tip { display: none; }
 .detail-top { display: flex; align-items: center; justify-content: space-between; }
@@ -2745,12 +2784,14 @@ onBeforeUnmount(() => {
   .detail-page { left: 18px; width: auto; }
   .hero-panel { width: auto; right: 18px; grid-template-columns: 1fr; }
   .province-panel { top: 300px; width: 210px; }
+  .city-quick-panel { top: 300px; width: 230px; }
   .node-detail-panel { width: calc(100vw - 36px); bottom: 78px; }
 }
 .screen-root.detail-mode .top-brand { opacity: 0.62; transform: translateY(-3px); transition: opacity 0.7s ease, transform 0.7s ease; }
 .screen-root.detail-mode .screen-canvas { cursor: default; }
 .screen-root.detail-mode .hero-panel,
-.screen-root.detail-mode .province-panel { opacity: 0; transform: translateX(-32px); pointer-events: none; }
+.screen-root.detail-mode .province-panel,
+.screen-root.detail-mode .city-quick-panel { opacity: 0; transform: translateX(-32px); pointer-events: none; }
 .screen-root.detail-mode .footer-bar { opacity: 0.4; transition: opacity 0.6s ease; }
 .screen-root.detail-mode .intel-dash-panel { opacity: 1; transform: translateX(0) scale(1); pointer-events: auto; }
 
