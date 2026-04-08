@@ -185,7 +185,7 @@ const activeGraphTip = ref(defaultGraphTip)
 const activeCollabTip = ref(defaultCollabTip)
 const activeTrend = ref(null)
 
-const createCanvasState = () => reactive({
+const createCanvasState = ({ scale = 1, minScale = 0.9, maxScale = 1.45 } = {}) => reactive({
   dragging: false,
   startPointerX: 0,
   startPointerY: 0,
@@ -197,10 +197,12 @@ const createCanvasState = () => reactive({
   viewportHeight: 0,
   surfaceWidth: 0,
   surfaceHeight: 0,
-  scale: 1
+  scale,
+  minScale,
+  maxScale
 })
 
-const graphState = createCanvasState()
+const graphState = createCanvasState({ scale: 1.18, minScale: 1, maxScale: 1.85 })
 const collabState = createCanvasState()
 
 const radialLayout = (items, options = {}) => {
@@ -266,7 +268,7 @@ const syncCanvas = (state, viewportRef, widthRatio, heightRatio) => {
 }
 
 const syncAllCanvases = () => {
-  syncCanvas(graphState, graphViewportRef, 1.1, 1.08)
+  syncCanvas(graphState, graphViewportRef, 1.18, 1.14)
   syncCanvas(collabState, collabViewportRef, 1.1, 1.08)
 }
 
@@ -299,7 +301,7 @@ const handlePointerMove = (state, event) => {
 }
 
 const updateScale = (state, nextScale) => {
-  state.scale = Math.min(1.45, Math.max(0.9, nextScale))
+  state.scale = Math.min(state.maxScale, Math.max(state.minScale, nextScale))
   const nextOffset = clampOffset(state, state.offsetX, state.offsetY)
   state.offsetX = nextOffset.x
   state.offsetY = nextOffset.y

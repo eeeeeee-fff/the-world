@@ -9,7 +9,10 @@
       "Bash(npm run:*)",
       "Bash(ffmpeg -i \"c:/Users/666/Downloads/mmexport1775525975377.mp4\" -vf \"select='eq\\(n,30\\)+eq\\(n,90\\)+eq\\(n,150\\)+eq\\(n,210\\)'\" -vsync vfr \"c:/Users/666/Downloads/dash_frame_%d.png\" -y)",
       "Bash(where ffmpeg:*)",
-      "Bash(python -c \"import cv2; cap=cv2.VideoCapture\\('c:/Users/666/Downloads/mmexport1775525975377.mp4'\\); cap.set\\(1,60\\); ret,f=cap.read\\(\\); cv2.imwrite\\('c:/Users/666/Downloads/df1.png',f\\); cap.set\\(1,120\\); ret,f=cap.read\\(\\); cv2.imwrite\\('c:/Users/666/Downloads/df2.png',f\\); cap.set\\(1,200\\); ret,f=cap.read\\(\\); cv2.imwrite\\('c:/Users/666/Downloads/df3.png',f\\)\")"
+      "Bash(python -c \"import cv2; cap=cv2.VideoCapture\\('c:/Users/666/Downloads/mmexport1775525975377.mp4'\\); cap.set\\(1,60\\); ret,f=cap.read\\(\\); cv2.imwrite\\('c:/Users/666/Downloads/df1.png',f\\); cap.set\\(1,120\\); ret,f=cap.read\\(\\); cv2.imwrite\\('c:/Users/666/Downloads/df2.png',f\\); cap.set\\(1,200\\); ret,f=cap.read\\(\\); cv2.imwrite\\('c:/Users/666/Downloads/df3.png',f\\)\")",
+      "Bash(xargs wc:*)",
+      "Bash(du -sh \"D:/github_knowledge_to_ai\"/*)",
+      "Bash(npm install:*)"
     ]
   }
 }
