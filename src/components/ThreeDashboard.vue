@@ -1,21 +1,29 @@
 ﻿<template>
-  <div class="screen-root" :class="{ 'detail-mode': !!selectedParticleData }">
+  <div ref="screenRootRef" class="screen-root" :class="{ 'detail-mode': !!selectedParticleData, 'intro-lock': !introInteractive }">
     <div ref="containerRef" class="screen-canvas"></div>
     <div class="screen-noise"></div>
     <div class="screen-vignette"></div>
 
-    <section class="hud top-brand glass-card">
+    <section ref="topBrandRef" class="hud top-brand glass-card">
       <div>
         <p class="eyebrow">INDUSTRIAL INTELLIGENCE / IMMERSIVE MAP</p>
-        <h1>产业智能情报 3D 指挥屏</h1>
+        <h1>&#20135;&#19994;&#26234;&#33021;&#24773;&#25253; 3D &#25351;&#25381;&#23631;</h1>
       </div>
-      <div class="brand-badge">
-        <span class="live-dot"></span>
-        <span>实时演算</span>
+      <div ref="topMetricsRef" class="top-metrics">
+        <div class="brand-badge">
+          <span class="live-dot"></span>
+          <span>&#23454;&#26102;&#28436;&#31639;</span>
+        </div>
+        <div class="title-metric-strip">
+          <div v-for="item in headlineMetrics" :key="item.key" class="title-metric">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.display }}</strong>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="hud hero-panel glass-card">
+    <section ref="heroPanelRef" class="hud hero-panel glass-card">
       <div class="hero-copy">
         <p class="eyebrow">{{ drillLabel }}</p>
         <h2>{{ heroTitle }}</h2>
@@ -394,7 +402,7 @@
       </div>
 
     
-    <footer class="hud footer-bar glass-card">
+    <footer ref="footerBarRef" class="hud footer-bar glass-card">
       <div class="legend-row">
         <span v-for="filter in FILTERS" :key="filter" class="legend-pill">
           <i :style="{ backgroundColor: colorToCss(CATEGORY_STYLES[filter].color) }"></i>
@@ -461,13 +469,20 @@ import {
   yangzhouGeo,
 } from '../data/map-scene-data'
 
+const screenRootRef = ref(null)
 const containerRef = ref(null)
+const topBrandRef = ref(null)
+const topMetricsRef = ref(null)
+const heroPanelRef = ref(null)
+const footerBarRef = ref(null)
 const selectedProvince = ref(null)
 const selectedCity = ref(null)
 const activeCategory = ref('Talent')
 const selectedParticleData = ref(null)
 const particleCount = ref(0)
+const introInteractive = ref(false)
 const tooltip = reactive({ visible: false, x: 0, y: 0, title: '', subtitle: '' })
+const headlineMetricValues = reactive({ particles: 0, provinces: 0, pulses: 0 })
 
 // ── Type-specific chart refs ─────────────────────────────────────
 const talentRadarRef  = ref(null); const talentPubRef   = ref(null)
@@ -483,6 +498,8 @@ let patentTreeChart  = null; let patentTrendChart = null; let patentIpcChart = n
 const PARTICLE_SECTOR_MAP = { Talent: 'robot', Paper: 'bio', Enterprise: 'energy', Patent: 'ai' }
 const CHART_CAT_COLORS = { Talent: '#58d5ff', Enterprise: '#ffa14a', Paper: '#57e38d', Patent: '#42f5b0' }
 const kpiColors = ['#58d5ff', '#ffa14a', '#57e38d', '#b57bee']
+const DEFAULT_FOCUS_CENTER = [104.113106, 37.570693]
+const DEFAULT_CAMERA_DISTANCE = 8.2
 
 const drillLabel = computed(() => {
   if (selectedCity.value) return `CITY / ${selectedProvince.value?.name || ''} / ${selectedCity.value.name}`
@@ -547,6 +564,39 @@ const sectorLoading = ref(false)
 const particleTypeData = ref(null)
 const selectedActivityDetail = ref(null)
 const categoryColorCss = computed(() => selectedParticleData.value ? (CHART_CAT_COLORS[selectedParticleData.value.category] || '#58d5ff') : '#58d5ff')
+
+function formatHeadlineMetric(value) {
+  return new Intl.NumberFormat('zh-CN').format(Math.max(0, Math.round(value)))
+}
+
+function getHeadlineMetricTargets() {
+  return {
+    particles: selectedCity.value ? particleCount.value : Math.max(chinaGeo.features.length * FILTERS.length, particleCount.value),
+    provinces: chinaGeo.features.length,
+    pulses: Math.max(pulseProvinceCodes.size, PROVINCE_PULSE_MAX_COUNT),
+  }
+}
+
+function animateHeadlineMetrics(duration = 0.7) {
+  const targets = getHeadlineMetricTargets()
+  Object.entries(targets).forEach(([key, value], index) => {
+    const proxy = { value: headlineMetricValues[key] || 0 }
+    gsap.to(proxy, {
+      value,
+      duration,
+      delay: index * 0.05,
+      ease: 'power2.out',
+      onUpdate() { headlineMetricValues[key] = proxy.value },
+      onComplete() { headlineMetricValues[key] = value },
+    })
+  })
+}
+
+const headlineMetrics = computed(() => ([
+  { key: 'particles', label: '粒子池', display: formatHeadlineMetric(headlineMetricValues.particles) },
+  { key: 'provinces', label: '省数', display: formatHeadlineMetric(headlineMetricValues.provinces) },
+  { key: 'pulses', label: '脉冲省数', display: formatHeadlineMetric(headlineMetricValues.pulses) },
+]))
 
 const WUHAN_ACTIVITY_DETAIL_LIBRARY = {
   paper: [
@@ -730,6 +780,11 @@ watch(particleTypeData, (data) => {
       },
     })
   })
+})
+
+watch([particleCount, selectedCity, selectedProvince], () => {
+  if (!introInteractive.value) return
+  animateHeadlineMetrics(0.45)
 })
 
 function kpiWidth(value) {
@@ -1005,7 +1060,7 @@ function closeParticleDetail() {
 
 let particleDetailTimer = null   // 转场延迟句柄
 let chartRenderTimer   = null   // 图表渲染延迟句柄（避免在转场动画中占用主线程）
-let scene, camera, renderer, composer, controls, raycaster, clock, stars, heroHalo, atmosphere, globeMesh, globeWire
+let scene, camera, renderer, composer, controls, raycaster, clock, stars, heroHalo, atmosphere, globeMesh, globeWire, introTimeline
 const fatLineMaterials = []
 const globeRadius = 5.2
 const globeSphere = new THREE.Sphere(new THREE.Vector3(), globeRadius + 0.18)
@@ -1043,6 +1098,12 @@ const provincePickables = []
 const cityPickables = []
 const cityHitPickables = []
 const provinceFeatureMap = new Map()
+const pulseProvinceCodes = new Set()
+const pulseProvincePhaseMap = new Map()
+const pulseProvinceWindowMap = new Map()
+const PROVINCE_PULSE_MIN_COUNT = 4
+const PROVINCE_PULSE_MAX_COUNT = 6
+let pulseProvinceNextSwapAt = 0
 const cityFeatureMap = new Map()
 
 let particleMeshes = []
@@ -1330,12 +1391,15 @@ function setFeatureStyle(group, style) {
       const isWall = group.children.indexOf(child) === 0
       child.material.opacity = isWall ? Math.max((style.sideOpacity || style.opacity || 0.3) * 0.96, 0.35) : style.opacity
       child.material.emissiveIntensity = isWall ? Math.max((style.sideEmissiveIntensity || style.emissiveIntensity || 0.4) * 0.72, 0.24) : style.emissiveIntensity
+      child.userData.baseOpacity = child.material.opacity
+      child.userData.baseEmissiveIntensity = child.material.emissiveIntensity
       child.material.color.setHex(isWall ? (style.sideColor || style.fillColor) : style.fillColor)
       child.material.emissive.setHex(isWall ? (style.sideEmissiveColor || style.emissiveColor) : style.emissiveColor)
     }
     if (child.isLineLoop || child.isLine) {
       const boost = child.material.opacity > 0.8 ? 0.18 : 0
       child.material.opacity = Math.min((style.lineOpacity || 0.7) + boost, 1)
+      child.userData.baseOpacity = child.material.opacity
       child.material.color.setHex(style.lineColor)
     }
   })
@@ -1379,7 +1443,7 @@ function createBaseGlobe() {
   globeWire = wire
   mapRoot.add(globeWire)
 
-  const chinaNormal = getNormalFromCenter([104.113106, 37.570693])
+  const chinaNormal = getNormalFromCenter(DEFAULT_FOCUS_CENTER)
   heroHalo = new THREE.Mesh(
     new THREE.CircleGeometry(2.8, 96),
     new THREE.MeshBasicMaterial({ color: 0x2c7be5, transparent: true, opacity: 0.02, depthWrite: false, blending: THREE.AdditiveBlending }),
@@ -1389,11 +1453,116 @@ function createBaseGlobe() {
   mapRoot.add(heroHalo)
 }
 
+function prepareProvinceIntroCascade() {
+  provinceFeatureMap.forEach((group) => {
+    group.userData.baseScale = group.scale.x
+    group.userData.introStartScale = Math.max(0.985, group.scale.x - 0.016)
+    group.scale.setScalar(group.userData.introStartScale)
+    group.children.forEach((child) => {
+      child.userData.baseOpacity = child.userData.baseOpacity ?? child.material.opacity
+      if (child.isMesh) {
+        child.userData.baseEmissiveIntensity = child.userData.baseEmissiveIntensity ?? child.material.emissiveIntensity
+        child.material.opacity = 0
+        child.material.emissiveIntensity = 0
+      } else if (child.isLineLoop || child.isLine) {
+        child.material.opacity = 0
+      }
+    })
+  })
+}
+
+function primeIntroScene() {
+  const chinaNormal = getNormalFromCenter(DEFAULT_FOCUS_CENTER)
+  const target = chinaNormal.clone().multiplyScalar(globeRadius * 0.86)
+  const startPosition = chinaNormal.clone().multiplyScalar(globeRadius + (DEFAULT_CAMERA_DISTANCE * 25))
+  controls.enabled = false
+  introInteractive.value = false
+  controls.target.copy(target)
+  camera.position.copy(startPosition)
+  camera.lookAt(target)
+  if (globeMesh) globeMesh.material.opacity = 0
+  if (atmosphere) atmosphere.material.opacity = 0
+  if (globeWire) globeWire.material.opacity = 0
+  if (heroHalo) heroHalo.material.opacity = 0
+  prepareProvinceIntroCascade()
+  gsap.set(topBrandRef.value, { autoAlpha: 0, y: -54 })
+  gsap.set(heroPanelRef.value, { autoAlpha: 0, x: -72 })
+  gsap.set(footerBarRef.value, { autoAlpha: 0, y: 54 })
+  gsap.set(topMetricsRef.value, { autoAlpha: 0, x: 64 })
+}
+
+function playIntroSequence() {
+  if (!camera || !controls) return
+  introTimeline?.kill()
+  primeIntroScene()
+  const chinaNormal = getNormalFromCenter(DEFAULT_FOCUS_CENTER)
+  const target = chinaNormal.clone().multiplyScalar(globeRadius * 0.86)
+  const endPosition = chinaNormal.clone().multiplyScalar(globeRadius + DEFAULT_CAMERA_DISTANCE)
+  const provinces = [...provinceFeatureMap.values()].sort((a, b) => {
+    const latDiff = (b.userData.center?.[1] || 0) - (a.userData.center?.[1] || 0)
+    return Math.abs(latDiff) > 0.2 ? latDiff : ((a.userData.center?.[0] || 0) - (b.userData.center?.[0] || 0))
+  })
+
+  const introCameraState = { distance: globeRadius + (DEFAULT_CAMERA_DISTANCE * 25) }
+
+  introTimeline = gsap.timeline()
+  introTimeline.to(introCameraState, {
+    distance: globeRadius + DEFAULT_CAMERA_DISTANCE,
+    duration: 1.65,
+    ease: 'power2.out',
+    onUpdate() {
+      camera.position.copy(chinaNormal.clone().multiplyScalar(introCameraState.distance))
+      camera.lookAt(target)
+    },
+  }, 0)
+  introTimeline.to(globeMesh.material, { opacity: 1, duration: 0.72, ease: 'power2.out' }, 0.8)
+  introTimeline.to(atmosphere.material, { opacity: 0.12, duration: 0.72, ease: 'power2.out' }, 0.82)
+  introTimeline.to(globeWire.material, { opacity: 0.2, duration: 0.62, ease: 'power2.out' }, 0.84)
+  introTimeline.to(heroHalo.material, { opacity: 0.02, duration: 0.62, ease: 'power2.out' }, 0.86)
+
+  provinces.forEach((group, index) => {
+    const at = 1.2 + index * 0.022
+    introTimeline.to(group.scale, {
+      x: group.userData.baseScale || 1,
+      y: group.userData.baseScale || 1,
+      z: group.userData.baseScale || 1,
+      duration: 0.3,
+      ease: 'power2.out',
+    }, at)
+    group.children.forEach((child) => {
+      if (child.isMesh) {
+        introTimeline.to(child.material, {
+          opacity: child.userData.baseOpacity ?? 0.18,
+          emissiveIntensity: child.userData.baseEmissiveIntensity ?? 0.24,
+          duration: 0.26,
+          ease: 'power2.out',
+        }, at)
+      } else if (child.isLineLoop || child.isLine) {
+        introTimeline.to(child.material, {
+          opacity: child.userData.baseOpacity ?? 0.88,
+          duration: 0.22,
+          ease: 'power2.out',
+        }, at)
+      }
+    })
+  })
+
+  introTimeline.to(topBrandRef.value, { autoAlpha: 1, y: 0, duration: 0.48, ease: 'power3.out' }, 1.8)
+  introTimeline.to(heroPanelRef.value, { autoAlpha: 1, x: 0, duration: 0.48, ease: 'power3.out' }, 1.84)
+  introTimeline.to(footerBarRef.value, { autoAlpha: 1, y: 0, duration: 0.5, ease: 'power3.out' }, 1.88)
+  introTimeline.to(topMetricsRef.value, { autoAlpha: 1, x: 0, duration: 0.42, ease: 'power3.out' }, 1.92)
+  introTimeline.call(() => animateHeadlineMetrics(0.55), null, 2.2)
+  introTimeline.call(() => {
+    introInteractive.value = true
+    controls.enabled = true
+  }, null, 2.5)
+}
+
 function initScene() {
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0x020814)
 
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200)
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 320)
   renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25))
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -1406,9 +1575,9 @@ function initScene() {
   controls.rotateSpeed = 0.6
   controls.zoomSpeed = 0.9
 
-  const chinaNormal = getNormalFromCenter([104.113106, 37.570693])
+  const chinaNormal = getNormalFromCenter(DEFAULT_FOCUS_CENTER)
   controls.target.copy(chinaNormal.clone().multiplyScalar(globeRadius * 0.86))
-  camera.position.copy(chinaNormal.clone().multiplyScalar(globeRadius + 8.2))
+  camera.position.copy(chinaNormal.clone().multiplyScalar(globeRadius + DEFAULT_CAMERA_DISTANCE))
 
   raycaster = new THREE.Raycaster()
   raycaster.params.Line.threshold = 0.09
@@ -1521,6 +1690,43 @@ function dimProvinceLayerExcept(activeCode) {
   })
 }
 
+function initializeProvincePulses() {
+  pulseProvinceCodes.clear()
+  pulseProvincePhaseMap.clear()
+  pulseProvinceWindowMap.clear()
+  pulseProvinceNextSwapAt = 0
+}
+
+function refreshProvincePulses(elapsed) {
+  if (elapsed < pulseProvinceNextSwapAt && pulseProvinceCodes.size) return
+  const excluded = String(selectedProvince.value?.code || '')
+  const codes = [...provinceFeatureMap.keys()].filter((code) => String(code) !== excluded)
+  if (!codes.length) {
+    pulseProvinceCodes.clear()
+    pulseProvincePhaseMap.clear()
+    pulseProvinceWindowMap.clear()
+    pulseProvinceNextSwapAt = elapsed + 2.8
+    return
+  }
+
+  pulseProvinceCodes.clear()
+  pulseProvincePhaseMap.clear()
+  pulseProvinceWindowMap.clear()
+  const shuffled = codes.slice().sort(() => Math.random() - 0.5)
+  const minCount = Math.min(codes.length, PROVINCE_PULSE_MIN_COUNT)
+  const maxCount = Math.min(codes.length, PROVINCE_PULSE_MAX_COUNT)
+  const count = maxCount <= minCount
+    ? minCount
+    : minCount + Math.floor(Math.random() * (maxCount - minCount + 1))
+  const duration = 2.8 + Math.random() * 0.9
+  shuffled.slice(0, count).forEach((code) => {
+    pulseProvinceCodes.add(code)
+    pulseProvincePhaseMap.set(code, Math.random() * Math.PI * 2)
+    pulseProvinceWindowMap.set(code, { start: elapsed, end: elapsed + duration })
+  })
+  pulseProvinceNextSwapAt = elapsed + duration + 0.45
+}
+
 function buildProvinceLayer() {
   provinceRoot.clear()
   provincePickables.length = 0
@@ -1540,6 +1746,8 @@ function buildProvinceLayer() {
     provinceFeatureMap.set(group.userData.code, group)
     group.children.forEach((child) => provincePickables.push(child))
   })
+
+  initializeProvincePulses()
 }
 
 function disposeGroup(root) {
@@ -2270,6 +2478,7 @@ function pickCityTargets(event) {
 
 function onPointerMove(event) {
   tooltip.visible = false
+  if (!introInteractive.value) return
 
   // Detail panel mode: suppress all map hover
   if (selectedParticleData.value) return
@@ -2350,6 +2559,7 @@ function onPointerMove(event) {
 }
 
 function onClick(event) {
+  if (!introInteractive.value) return
   const hits = pick(event)
   const hit = hits[0]
   const hitData = hit?.object?.userData || {}
@@ -2414,7 +2624,7 @@ function resetToNational() {
   clearCityLayer()
   clearFocusPreview()
   setZoomWindow(5.2, 28)
-  focusTo([104.113106, 37.570693], 8.2, 1.1)
+  focusTo(DEFAULT_FOCUS_CENTER, DEFAULT_CAMERA_DISTANCE, 1.1)
 }
 
 function goBackOneLevel() {
@@ -2433,6 +2643,7 @@ function goBackOneLevel() {
 }
 
 function onDblClick(event) {
+  if (!introInteractive.value) return
   // 详情面板模式下不响应（有专属关闭按钮）
   if (selectedParticleData.value) return
   // 双击在粒子或城市标记上不退回
@@ -2443,6 +2654,7 @@ function onDblClick(event) {
 }
 
 function onKeyDown(event) {
+  if (!introInteractive.value) return
   if (event.key === 'Escape') goBackOneLevel()
 }
 
@@ -2502,14 +2714,45 @@ function animate() {
     stars.rotation.y += 0.00045
     stars.rotation.x = Math.sin(elapsed * 0.08) * 0.03
   }
-  if (heroHalo) heroHalo.material.opacity = 0.025 + Math.sin(elapsed * 1.2) * 0.01
-  if (atmosphere) atmosphere.material.opacity = 0.09 + Math.sin(elapsed * 1.1) * 0.03
+  if (introInteractive.value) {
+    if (heroHalo) heroHalo.material.opacity = 0.025 + Math.sin(elapsed * 1.2) * 0.01
+    if (atmosphere) atmosphere.material.opacity = 0.09 + Math.sin(elapsed * 1.1) * 0.03
+  }
   if (orbitDecorations) orbitDecorations.children.forEach((child, index) => {
     child.rotation.z += child.userData.spin || 0
     const pulse = 1 + Math.sin(elapsed * (child.userData.pulse || 1.2) + index) * 0.08
     child.scale.setScalar(pulse)
     child.material.opacity = Math.max(0.08, Math.min(0.38, (index === 0 ? 0.3 : index === 1 ? 0.2 : 0.14) + Math.sin(elapsed * (child.userData.pulse || 1.2) + index) * 0.06))
   })
+  if (introInteractive.value) {
+    refreshProvincePulses(elapsed)
+    provinceFeatureMap.forEach((group, code) => {
+      if (String(code) === String(selectedProvince.value?.code || '')) return
+      const isActivePulse = pulseProvinceCodes.has(code)
+      const phase = pulseProvincePhaseMap.get(code) || 0
+      const window = pulseProvinceWindowMap.get(code)
+      let envelope = 0
+      if (isActivePulse && window) {
+        const total = Math.max(0.001, window.end - window.start)
+        const progress = Math.min(1, Math.max(0, (elapsed - window.start) / total))
+        if (progress < 0.28) {
+          envelope = progress / 0.28
+        } else if (progress < 0.72) {
+          envelope = 1
+        } else {
+          envelope = 1 - ((progress - 0.72) / 0.28)
+        }
+        envelope = Math.max(0, Math.min(1, envelope))
+      }
+      const wave = envelope > 0 ? (0.35 + ((Math.sin(elapsed * 2.4 + phase) + 1) * 0.5) * 0.65) * envelope : 0
+      group.children.forEach((child, index) => {
+        if (!child.isMesh) return
+        const base = child.userData?.baseEmissiveIntensity ?? 0
+        const boost = wave * (index === 0 ? 0.46 : 0.62)
+        child.material.emissiveIntensity = base + boost
+      })
+    })
+  }
   if (selectedProvince.value) {
     const provinceGroup = provinceFeatureMap.get(String(selectedProvince.value.code))
     if (provinceGroup) provinceGroup.children.forEach((child, index) => { if (child.isMesh) child.material.emissiveIntensity = (index === 0 ? 1.18 : 1.5) + Math.sin(elapsed * 2.5) * 0.24 })
@@ -2546,10 +2789,12 @@ onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
   onResize()
   animate()
+  nextTick(() => playIntroSequence())
 })
 
 
 onBeforeUnmount(() => {
+  introTimeline?.kill()
   cancelAnimationFrame(rafId)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('keydown', onKeyDown)
@@ -2581,6 +2826,12 @@ onBeforeUnmount(() => {
 .eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.18em; color: #7fb9ff; }
 .top-brand h1 { margin: 0; font-size: 24px; font-weight: 700; }
 .brand-badge { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; background: rgba(82, 164, 255, 0.12); border: 1px solid rgba(126, 198, 255, 0.24); }
+.screen-root.intro-lock .screen-canvas { cursor: progress; }
+.top-metrics { display: flex; align-items: center; gap: 14px; }
+.title-metric-strip { display: grid; grid-template-columns: repeat(3, minmax(72px, 1fr)); gap: 8px; }
+.title-metric { min-width: 72px; padding: 8px 10px; border-radius: 12px; background: rgba(18, 42, 82, 0.52); border: 1px solid rgba(126, 198, 255, 0.14); }
+.title-metric span { display: block; font-size: 10px; color: #8fbdf0; letter-spacing: 0.08em; }
+.title-metric strong { display: block; margin-top: 3px; font-size: 18px; color: #eff8ff; }
 .live-dot { width: 10px; height: 10px; border-radius: 50%; background: #54f3d2; box-shadow: 0 0 12px #54f3d2; }
 .hero-panel { top: 96px; left: 18px; width: min(560px, calc(100vw - 420px)); border-radius: 18px; padding: 10px 12px; display: block; pointer-events: none; transition: opacity 0.45s ease, transform 0.45s ease; }
 .hero-copy { pointer-events: auto; }
