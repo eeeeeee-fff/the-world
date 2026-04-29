@@ -4,15 +4,15 @@
 
 ### 在线演示
 
-- **主 Demo（3D 指挥屏）**：<https://eeeeeee-fff.github.io/interactive-map-visualization-demo-/>
-- **Blueprint 链路演示**：<https://eeeeeee-fff.github.io/interactive-map-visualization-demo-/demo-blueprint.html>
+- 访问地址：<https://eeeeeee-fff.github.io/interactive-map-visualization-demo-/>
+- 进入主页 → 点击顶部居中的 **Industry Chain** 按钮，可切换到产业链场景；点击 **← Back to Map** 返回主地图。
 
 ---
 
-一个基于 Vue 3 + Vite + Three.js 的产业情报可视化项目，包含两个相对独立的可视化页面：
+一个基于 Vue 3 + Vite + Three.js 的产业情报可视化项目，整体是一个 SPA，包含两个核心视图：
 
-- **主 Demo（`index.html`）** —— 沉浸式 3D 指挥屏，集成中国地图分布、节点详情、ECharts 图表与情报面板。
-- **`demo-blueprint.html`** —— 独立的 Three.js 单文件演示场景：Focus Driven Chain Space，聚焦"产业链"动效。
+- **主视图：3D 地图指挥屏** —— 沉浸式 3D 中国地图，集成省/市下钻、节点详情、ECharts 图表与情报面板。
+- **副视图：Industry Chain 产业链场景** —— 6 个漂浮产业扇区，点击任一扇区触发产业链生长动画（主链 + 分支节点）。
 
 ---
 
@@ -28,13 +28,11 @@
 
 ---
 
-## 二、主 Demo：产业智能情报 3D 指挥屏
-
-入口：[index.html](index.html) → [src/main.js](src/main.js) → [src/App.vue](src/App.vue) → [src/components/ThreeDashboard.vue](src/components/ThreeDashboard.vue)
+## 二、主视图：3D 地图指挥屏
 
 ### 功能模块
 
-- **3D 地图主场景**：中国省/市层级下钻，粒子节点表示行业资源分布。
+- **3D 地图主场景**：中国省/市层级下钻，粒子节点表示行业资源分布（仅 **江苏扬州** 与 **湖北武汉** 有完整假数据）。
 - **品牌 HUD / 顶部指标条**：实时演算徽章 + headline 关键指标。
 - **Hero 面板**：当前下钻范围标题、行业类目筛选（filter pill）、统计卡片。
 - **省级菜单 / 城市快捷入口**：选中省后展开城市菜单，选中城市后展示该类目下的快捷入口卡。
@@ -45,21 +43,23 @@
 
 ---
 
-## 三、demo-blueprint.html：Focus Driven Chain Space
+## 三、副视图：Industry Chain 产业链场景
 
-入口：[demo-blueprint.html](demo-blueprint.html)（**单文件、零打包依赖**，直接通过 `<script type="module">` 引用 `node_modules` 内的 three / gsap / postprocessing）。
+入口：主页顶部居中的 **Industry Chain** 胶囊按钮 → 切换到 [src/components/BlueprintScene.vue](src/components/BlueprintScene.vue)。
 
 ### 场景说明
 
-- 概览态：6 个漂浮的产业扇区（**IC、Bio、Robotics、Aerospace、Low Alt、Storage**）在镜头前缓慢漂移。
-- 点击任一扇区：
-  1. 镜头推进到该扇区位置；
-  2. 核心 ShockWave 脉冲冲击；
-  3. **主链节点（Main）依次生长**到右侧；
-  4. **分支节点（Branch）** 围绕主链展开。
-- 右上角 HUD 显示当前 Scene State 文案；右下角 Legend 标注 Main / Branch / Pulse 三种节点。
-- `Esc` 或点击 **Back To Overview** 按钮回到概览。
+- **概览态**：6 个漂浮产业扇区在镜头前缓慢轨道漂移：
 
+- **聚焦态**：点击任一扇区触发：
+  1. 镜头推进到该扇区位置
+  2. 核心 ShockWave 脉冲冲击
+  3. **主链节点（Main）依次生长**到右侧
+  4. **分支节点（Branch）** 围绕主链展开
+
+- **退出**：
+  - `Esc` 或 **Back To Overview** 按钮 → 在 chain 场景内回到概览态
+  - **← Back to Map** 按钮 → 返回主地图视图
 
 ---
 
@@ -77,11 +77,10 @@ npm install
 npm run dev
 ```
 
-启动后默认监听 `http://localhost:5173`，两个页面分别访问：
+启动后访问：
 
 ```text
-主 Demo（3D 指挥屏）: http://localhost:5173/
-Blueprint 链路演示  : http://localhost:5173/demo-blueprint.html
+http://localhost:5173/
 ```
 ---
 
@@ -89,29 +88,23 @@ Blueprint 链路演示  : http://localhost:5173/demo-blueprint.html
 
 ```text
 .
-├── index.html               # 主 Demo 入口（Vue 应用）
-├── demo-blueprint.html      # 独立 Three.js 单文件演示
+├── index.html                                # SPA 入口
 ├── vite.config.js
 ├── package.json
 ├── src/
 │   ├── main.js
-│   ├── App.vue
-│   ├── components/          # ThreeDashboard 及各业务面板
-│   ├── charts/              # ECharts 配置
-│   ├── composables/         # Vue 组合式函数
-│   ├── data/                # 静态数据集（地图、扇区、人才动态等）
+│   ├── App.vue                               # 视图切换 + Industry Chain 按钮
+│   ├── components/
+│   │   ├── ThreeDashboard.vue                # 主视图：3D 地图指挥屏
+│   │   ├── BlueprintScene.vue                # 副视图：产业链场景
+│   │   └── ...                               # 各业务面板（Intel / Charts / TopBar 等）
+│   ├── charts/                               # ECharts 配置
+│   ├── composables/                          # Vue 组合式函数
+│   ├── data/                                 # 静态数据集（地图、扇区、人才动态等）
 │   ├── styles/
 │   └── utils/
-└── docs/                    # 构建产物（GitHub Pages 部署目录）
+└── docs/                                     # 构建产物（GitHub Pages 部署目录）
 ```
-
----
-
-## 六、常见问题
-
-- **`demo-blueprint.html` 打开是空白？** 必须通过 `npm run dev` / `npm run preview` 等 HTTP 服务访问，不能用 `file://` 协议双击打开（ES Module + 相对路径 import 不支持 file 协议）。
-- **构建后路径 404？** [vite.config.js](vite.config.js) 中 `base` 设为 `/interactive-map-visualization-demo-/`，部署到子路径仓库时正确；如果想本地预览构建产物，请用 `npm run preview`。
-
 ---
 
 ## 七、参考与致谢
